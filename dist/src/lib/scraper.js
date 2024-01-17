@@ -51,7 +51,11 @@ const joinRichText = (richTextArray, useWrappers = false) => {
         : richTextArray.map((entity) => entity.plain_text).join("");
 };
 exports.joinRichText = joinRichText;
-const eternifyFile = () => __awaiter(void 0, void 0, void 0, function* () {
+const eternifyFile = (url) => __awaiter(void 0, void 0, void 0, function* () {
+    const res = yield fetch(`https://filepod.keepish.net?url=${encodeURIComponent(url)}`, {
+        method: 'GET',
+    }).then(r => r.json());
+    return res.id;
 });
 exports.eternifyFile = eternifyFile;
 const sanitizeEntry = (_a) => __awaiter(void 0, void 0, void 0, function* () {
@@ -61,7 +65,6 @@ const sanitizeEntry = (_a) => __awaiter(void 0, void 0, void 0, function* () {
     };
     for (const [field, value] of Object.entries(entry)) {
         sanitized[field] = value.type ? value[value.type] : value;
-        console.log(value);
         if (["title", "rich_text"].includes(value.type)) {
             sanitized[field] = {
                 rich: (0, exports.joinRichText)(sanitized[field], true),
@@ -69,9 +72,10 @@ const sanitizeEntry = (_a) => __awaiter(void 0, void 0, void 0, function* () {
             };
         }
         if (Array.isArray(sanitized[field])) {
-            for (let i = 0; i < sanitized[field]; i++) {
+            for (let i = 0; i < sanitized[field].length; i++) {
                 if (sanitized[field][i].type === 'file') {
-                    sanitized[field][i] = yield 0;
+                    const newUrlRes = yield (0, exports.eternifyFile)(sanitized[field][i].file.url);
+                    sanitized[field][i].file.url = `https://filepod.keepish.net/${newUrlRes}`;
                 }
             }
         }

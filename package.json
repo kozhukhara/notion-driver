@@ -13,7 +13,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@notionhq/client": "^2.2.14"
+    "@faker-js/faker": "^8.3.1",
+    "@notionhq/client": "^2.2.14",
+    "faker-js": "^1.0.0"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.18.1",

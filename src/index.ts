@@ -1,6 +1,24 @@
 import {Client, iteratePaginatedAPI} from "@notionhq/client";
 import {DatabaseObjectResponse} from "@notionhq/client/build/src/api-endpoints";
 import {sanitizeEntry} from "./lib/scraper";
+import * as path from "path";
+
+// @ts-ignore
+String.prototype.toCamelCase = function (this) {
+    let result = this
+        // Remove non-alphanumeric characters except spaces and apostrophes
+        .replace(/[^a-zA-Z0-9 ']/g, '')
+        // Split the string into words using space as a delimiter
+        .split(' ')
+        // Capitalize the first letter of each word
+        .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join('')
+        // Handle strings that start with numbers by prefixing an underscore
+        .replace(/^(\d)/, '_$1');
+
+    // Capitalize the first letter of the result, if it's a letter
+    return result.charAt(0).toUpperCase() + result.slice(1);
+}
 
 type DatabaseMappings = { [key: string]: string };
 
@@ -23,29 +41,46 @@ interface MetaParams {
     limit?: number;
 }
 
+type UUID = string;
+
 interface NotionClientConfig {
+    parents?: UUID[];
     mappings: DatabaseMappings;
     token: string;
 }
 
 export class NotionClient {
-    private readonly mappings!: DatabaseMappings;
+    private readonly parents?: UUID[];
+    mappings!: DatabaseMappings;
     readonly client!: Client;
 
+
     constructor(config: NotionClientConfig) {
-        this.mappings = config.mappings;
+        this.mappings = {...this.mappings, ...config.mappings};
+        this.parents = config.parents;
         this.client = new Client({
             auth: config.token,
         });
     }
 
-    private async _dbquery(
+    async init() {
+        if (this.parents?.length) {
+            let mappings = {}
+            for (const parent of this.parents) {
+                const dbs = await this._populateChildDBs(parent);
+                mappings = {...mappings, ...dbs};
+            }
+            this.mappings = {...this.mappings, ...mappings}
+        }
+    }
+
+    private async _dbQuery(
         databaseId: string,
         filter,
         page_size: number = 1,
         start_cursor: string = undefined,
     ) {
-        return await this.client.databases.query({
+        return this.client.databases.query({
             database_id: databaseId,
             ...(filter ? {filter} : {}),
             page_size,
@@ -53,8 +88,34 @@ export class NotionClient {
         });
     }
 
-    private async _pagequery(page_id: string) {
-        return await this.client.pages.retrieve({page_id});
+    private async _pageQuery(page_id: string) {
+        return this.client.pages.retrieve({page_id});
+    }
+
+    private async _createQuery(database_id: string, properties: { [key: string]: any }) {
+        return this.client.pages.create({
+            parent: {
+                database_id
+            },
+            properties
+        });
+    }
+
+    private async _childrenQuery(block_id: string) {
+        return this.client.blocks.children.list({block_id});
+    }
+
+    private async _populateChildDBs(page_id: string) {
+        const children = await this._childrenQuery(page_id);
+        const DBS = {}
+        for (const block of children.results) {
+            // @ts-ignore
+            if (block?.type !== 'child_database') continue;
+            // @ts-ignore
+            DBS[block.child_database.title.toCamelCase()] = block.id;
+        }
+
+        return DBS;
     }
 
     async get(
@@ -73,7 +134,7 @@ export class NotionClient {
         let currentPage = meta.page || 1;
         let totalResults = [];
 
-        let response = await this._dbquery(databaseId, query, pageSize);
+        let response = await this._dbQuery(databaseId, query, pageSize);
         while (
             response.results.length > 0 &&
             totalResults.length < pageSize * currentPage
@@ -82,7 +143,7 @@ export class NotionClient {
             if (!response.has_more) {
                 break;
             }
-            response = await this._dbquery(
+            response = await this._dbQuery(
                 databaseId,
                 query,
                 pageSize,
@@ -116,7 +177,7 @@ export class NotionClient {
         query: QueryParams,
     ): Promise<Entity | any> {
         const databaseId = this.mappings[alias];
-        const response = await this._dbquery(databaseId, query);
+        const response = await this._dbQuery(databaseId, query);
         if (!response.results.length) return null;
         const firstResult = response.results[0];
         return sanitizeEntry({
@@ -126,9 +187,13 @@ export class NotionClient {
     }
 
     async getOneById(id: string): Promise<Entity | any> {
-        const response = await this._pagequery(id).catch((e) => null);
+        const response = await this._pageQuery(id).catch((e) => null);
         return response
             ? sanitizeEntry({id: response.id, ...response.properties})
             : null;
+    }
+
+    async create(alias: keyof DatabaseMappings, properties: Entity) {
+        return this._createQuery(this.mappings[alias], properties);
     }
 }

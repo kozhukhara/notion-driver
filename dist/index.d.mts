@@ -19,6 +19,7 @@ interface ResultsMetadata {
 interface MetaParams {
     page?: number;
     limit?: number;
+    next_cursor?: string | null;
 }
 type UUID = string;
 interface NotionClientConfig {

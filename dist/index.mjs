@@ -182,22 +182,22 @@ var NotionClient = class {
     });
   }
   get(_0, _1) {
-    return __async(this, arguments, function* (alias, query, meta = { limit: 15, page: 1 }) {
+    return __async(this, arguments, function* (alias, query, meta = { limit: 15, page: 1, next_cursor: null }) {
       var _a, _b;
       const databaseId = this.mappings[alias];
       const pageSize = meta.limit || 15;
       let currentPage = meta.page || 1;
       let totalResults = [];
       let has_more = false;
-      let next_cursor = null;
+      let next_cursor = (_a = meta.next_cursor) != null ? _a : null;
       let response = yield this._dbQuery(databaseId, query, pageSize, null);
       while (response.results.length > 0 && totalResults.length < pageSize * currentPage) {
         totalResults = [...totalResults, ...response.results];
         if (!response.has_more) {
           break;
         }
-        has_more = (_a = response.has_more) != null ? _a : false;
-        next_cursor = (_b = response.next_cursor) != null ? _b : void 0;
+        has_more = (_b = response.has_more) != null ? _b : false;
+        next_cursor = response.next_cursor;
         response = yield this._dbQuery(
           databaseId,
           query,
@@ -242,7 +242,9 @@ var NotionClient = class {
   getOneById(id) {
     return __async(this, null, function* () {
       const response = yield this._pageQuery(id).catch((e) => null);
-      return response ? sanitizeEntry(__spreadValues({ id: response.id }, response.properties)) : null;
+      return response ? sanitizeEntry(__spreadValues({
+        id: response.id
+      }, response.properties)) : null;
     });
   }
   create(alias, properties) {

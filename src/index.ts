@@ -43,6 +43,7 @@ interface ResultsMetadata {
 interface MetaParams {
   page?: number;
   limit?: number;
+  next_cursor?: string | null;
 }
 
 type UUID = string;
@@ -127,7 +128,7 @@ export class NotionClient {
   async get(
     alias: keyof DatabaseMappings,
     query: QueryParams,
-    meta: MetaParams = { limit: 15, page: 1 },
+    meta: MetaParams = { limit: 15, page: 1, next_cursor: null },
   ): Promise<
     | {
         results: Entity[];
@@ -140,7 +141,7 @@ export class NotionClient {
     let currentPage = meta.page || 1;
     let totalResults: string | any[] = [];
     let has_more = false;
-    let next_cursor = null;
+    let next_cursor = meta.next_cursor ?? null;
 
     let response = await this._dbQuery(databaseId, query, pageSize, null);
     while (
@@ -152,7 +153,7 @@ export class NotionClient {
         break;
       }
       has_more = response.has_more ?? false;
-      next_cursor = response.next_cursor ?? undefined;
+      next_cursor = response.next_cursor;
       response = await this._dbQuery(
         databaseId,
         query,
